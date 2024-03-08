@@ -10,3 +10,141 @@
 由于已经为playerGuid建立索引,所以可以快速读取玩家的排名,sequence列也具备索引,所以可以用sequence快速查询玩家自己排名前后的10个玩家,
 
 如果需要多字段排序,则可以在排行榜计算完成之后,流式读取每一行时,遇到相同score数据时,保存到内存中,由于score相同且触发时间相同的玩家肯定是很少数的,所以根据玩家ID查出相应的名称等信息,按照这些信息直接在内存排序,排序后再设置sequence(排名)
+
+
+
+import java.util.ArrayList;
+import java.util.Collections;
+
+/**
+ * Author: shijin
+ * Date: 2024/03/08
+ */
+public class RankCalculator {
+    static class PlayerData{
+        long playerGuid;
+        int score;
+        long scoreUpdateTimestamp;
+    }
+    static class Player{
+        long playerGuid;
+        String playerName;
+        int level;
+    }
+
+    static class PlayerRankData{
+        long playerGuid;
+        long score;
+        int sequence=0;
+
+        public PlayerRankData(long playerGuid, long score) {
+            this.playerGuid = playerGuid;
+            this.score = score;
+        }
+
+        public PlayerRankData() {
+        }
+    }
+
+    static Player queryPlayer(long playerGuid){
+        return new Player();
+    }
+
+    static ArrayList<PlayerData> queryPlayerDataPage(int skip,int limit){
+        return new ArrayList<>();
+    }
+
+    static void insertPlayerRankData(PlayerRankData playerRankData){
+
+    }
+    static void createIndex(String column,int sort){
+
+    }
+    static void updatePlayerRankDataSequence(long playerGuid, int sequence) {
+
+    }
+
+    static int comparePlayerLevelAndName(Player p0, Player p1) {
+        return -1;
+    }
+
+    static ArrayList<PlayerRankData> queryPlayerRankDataOrderByScoreDesc(int skip,int limit){
+        return new ArrayList<>();
+    }
+
+    static PlayerRankData queryPlayerRankDataByPlayerGuid(long playerGuid){
+        return new PlayerRankData();
+    }
+
+    //计算逻辑
+    static void calculateRank() {
+        long timestampStart=System.currentTimeMillis()-1000*60*60*24*30L;
+        final int limit=32;
+        int skip=0;
+        for(;;){
+            final ArrayList<PlayerData> playerDataList = queryPlayerDataPage(skip, limit);
+            for (PlayerData playerData : playerDataList) {
+                long score=playerData.score<<32;
+                int update=(int)(playerData.scoreUpdateTimestamp-timestampStart);
+                score=score|update;
+                insertPlayerRankData(new PlayerRankData(playerData.playerGuid,score));
+            }
+            if (playerDataList.size()<limit) {
+                break;
+            }
+            skip=skip+limit;
+        }
+
+        createIndex("playerGuid",1);
+        createIndex("score",-1);
+        int sequence=1;
+        skip=0;
+        long lastScore=-1;
+        int startSequence=sequence;
+        final ArrayList<PlayerRankData> sortCache=new ArrayList<>(32);
+        for (;;) {
+            final ArrayList<PlayerRankData> playerRankDataList = queryPlayerRankDataOrderByScoreDesc(skip, limit);
+            for (PlayerRankData playerRankData : playerRankDataList) {
+                if(playerRankData.score==lastScore){
+                    sortCache.add(playerRankData);
+                }else{
+                    if (sortCache.size() > 0) {
+                        //说明存在分数相同且最后更新时间相同的多个玩家
+                        Collections.sort(sortCache, (playerRankData0, playerRankData1) -> {
+                            //从数据库中查出玩家等级和姓名
+                            final Player player0 = queryPlayer(playerRankData0.playerGuid);
+                            final Player player1 = queryPlayer(playerRankData1.playerGuid);
+                            return comparePlayerLevelAndName(player0,player1);
+                        });
+                        int i=0;
+                        for (PlayerRankData rankData : sortCache) {
+                            updatePlayerRankDataSequence(rankData.playerGuid, startSequence + i);
+                            i++;
+                        }
+                    }
+                    startSequence=sequence;
+                    sortCache.clear();
+                    lastScore=playerRankData.score;
+                }
+            }
+            if(playerRankDataList.size()<limit){
+                break;
+            }
+            skip=skip+limit;
+        }
+        createIndex("sequence",1);
+    }
+    
+    //查询逻辑
+    static ArrayList<PlayerRankData> queryPlayerRankRelated(long playerGuid){
+        final int range=10;
+        final PlayerRankData playerRankData = queryPlayerRankDataByPlayerGuid(playerGuid);
+        int sequenceStart=playerRankData.sequence-range;
+        int sequenceEnd=playerRankData.sequence+range;
+        return queryPlayerRankDataList(sequenceStart,sequenceEnd);
+    }
+    
+    static ArrayList<PlayerRankData> queryPlayerRankDataList(int sequenceStart,int sequenceEnd){
+        return new ArrayList<>();
+    }
+}
