@@ -122,10 +122,14 @@ public class RankCalculator {
                             i++;
                         }
                     }
+                    if(sortCache.isEmpty()){
+                        updatePlayerRankDataSequence(playerRankData.playerGuid, sequence);
+                    }
                     startSequence=sequence;
                     sortCache.clear();
                     lastScore=playerRankData.score;
                 }
+                sequence++;
             }
             if(playerRankDataList.size()<limit){
                 break;
